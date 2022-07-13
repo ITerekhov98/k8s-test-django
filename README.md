@@ -4,7 +4,98 @@
 
 Внутри конейнера Django запускается с помощью Nginx Unit, не путать с Nginx. Сервер Nginx Unit выполняет сразу две функции: как веб-сервер он раздаёт файлы статики и медиа, а в роли сервера-приложений он запускает Python и Django. Таким образом Nginx Unit заменяет собой связку из двух сервисов Nginx и Gunicorn/uWSGI. [Подробнее про Nginx Unit](https://unit.nginx.org/).
 
-## Как запустить dev-версию
+
+## Развёрытвание с помощью Minikube
+
+Перед началом работы убедитесь что у вас установлены следующие инструменты:
+- Гипервизор. Если используете Windows, подойдёт [virtualbox](https://www.virtualbox.org/wiki/Downloads), либо [Hyper-V](https://msdn.microsoft.com/en-us/virtualization/hyperv_on_windows/quick_start/walkthrough_install). Для linux также можно использовать [virtualbox](https://www.virtualbox.org/wiki/Downloads), либо [KVM](https://www.linux-kvm.org/), который более прост и гибок в установке. Обратите внимание, что если вы используете WSL, вам понадобится провести дополнительные манипуляции. [Подробная инструкция](https://www.virtualizationhowto.com/2021/11/install-minikube-in-wsl-2-with-kubectl-and-helm/)
+
+- Сам [Minicube](https://kubernetes.io/ru/docs/tasks/tools/install-minikube/)
+
+- Инструмент для управления кластерами Kubernetes: [Kubectl](https://kubernetes.io/docs/tasks/tools/)
+
+Дальнейшие инструкции и команды будут актуальны для Ubuntu 20.04, в т.ч. установленной в WSL
+
+### Запускаем кластер Minikube в нашей виртуальной среде:
+```
+minikube start
+```
+Как правило minikube по умолчанию выбирает нужный драйвер, но если возникнут проблемы, можно указать его явно через аргумент, например: `--vm-driver=virtualbox`.
+
+Первый запуск займёт чуть больше времени чем последующие. Проверьте корректность утановки следующей командой:
+```
+kubectl cluster-info
+```
+
+### Настройка и запуск БД
+
+- Скачайте репозиторий с кодом, перейдите в его директорию. Создайте файл `values.yaml`. Заполните его по шаблону, указав данные в следующем формате:
+```
+auth:
+  enablePostgresUser: true
+  postgresPassword: {your database password}
+  username: {your username}
+  password: {your user`s password}
+  database: {your database`s name}
+```
+
+- Установите пакетный менеджер для Kubernetes - [Helm](https://helm.sh/).
+
+Выполните следующие команды:
+```
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install postgres -f values.yaml bitnami/postgresql
+```
+Helm установит и запустит postgresql, а также создаст пользователя по параметрам, указанным в `values.yaml`.
+
+
+### Настройка и запуск Django
+При развёртывании будет использоваться готовый image с Django. Если хотите использовать свой image, откройте файл kubernetes/django-service.yml` и измените значение image на адрес нужного на docker hub.
+
+
+- Откройте `cubernetes/configmap.yml` и укажите нужные значения для Django. В DATABASE_URL укажите данные в формате 
+`postgres://username:password@db_host:db_port/database_name`, где username, password, database_name - данные из файла `values.yaml`, db_host - значение, указанное в команде helm install, db_port - по умолчанию 5432
+
+- Регистрируем конфиг и поднимаем Django:
+```
+kubectl apply -f kubernetes/configmap.yml
+kubectl apply -f kubernetes/django-service.yml
+```
+Обратите внимание что в одном файле `kubernetes/django-service.yml` создаётся сразу Deployment и Service для нашего приложения.
+- Создаём миграции:
+```
+kubectl apply -f kubernetes/migrates.yml
+```
+- Создаём kron службу для очистки устаревших сессий:
+```
+kubectl apply -f kubernetes/clearsessions.yml
+```
+- Запускаем балансировщик нагрузки - Ingress:
+
+Добавьте выбранный хост(в примере используется star-burger.test) в `/etc/hosts`. Ip можно узнать с помощью команды `minikube ip`.
+
+Выполните команду:
+
+```
+kubectl apply -f kubernetes/ingress.yml
+```
+
+### Проверка
+
+Для просмотра запущенных сервисов выполните:
+```
+kubectl get svc
+```
+Чтобы получить ip и порт нужного сервиса можно также выполнить:
+```
+minikube service <your_service>
+```
+
+
+
+
+
+## Как запустить dev-версию с помощью docker-compose
 
 Запустите базу данных и сайт:
 
