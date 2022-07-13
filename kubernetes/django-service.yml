@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: django_app
+  template:
+    metadata:
+      labels:
+        app: django_app
+    spec:
+      containers:
+        - name: django
+          image: iterekhov/django_app:1
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: django-configmap
+
+---
+apiVersion: v1
+kind: Service
+metadata: 
+  name: django
+spec:
+  selector:
+    app: django_app
+  ports:
+    - port: 80
+      targetPort: 80
+  type: NodePort
